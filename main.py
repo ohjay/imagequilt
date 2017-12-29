@@ -38,11 +38,11 @@ DEFAULTS = {
     'texture':       'in/sn_small.jpg',
     'target':        'in/owen_small.jpg',
     'outsize':       600,
-    'patchsize':     60,
-    'overlap':       30,
-    'err_threshold': 0.7,
+    'patchsize':     80,
+    'overlap':       35,
+    'err_threshold': 0.6,
     'alpha_init':    0.1,
-    'n':             8,
+    'n':             10,
     'outdir':        'out',
 }
 DOUBLE_OVERLAP = False
@@ -111,7 +111,8 @@ def generate_transfer_similarity_map(img, img_out, pos_y, pos_x, patch_height, p
     img_gray, target_gray, alpha, itr = transfer_info
     target = target_gray[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
     t_img = img_gray[oh_subtrahend:-patch_height - oh_addend, ow_subtrahend:-patch_width - ow_addend]
-    simi_map = (1 - alpha) * similarity(t_img, target, method='cv2')
+    # simi_map = (1 - alpha) * similarity(t_img, target, method='cv2')
+    simi_map = similarity(t_img, target, method='cv2')
     if itr > 0:
         existing = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
         e_img = img[oh_subtrahend:-patch_height - oh_addend, ow_subtrahend:-patch_width - ow_addend]
