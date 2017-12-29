@@ -36,9 +36,9 @@ except ImportError:
 DEFAULTS = {
     'texture':       'in/bricks_small.jpg',
     'target':        'in/owen_small.jpg',
-    'outsize':       600,
-    'patchsize':     60,
-    'overlap':       20,
+    'outsize':       300,
+    'patchsize':     30,
+    'overlap':       10,
     'err_threshold': 0.10,
     'n':             8,
     'outdir':        'out',
@@ -101,10 +101,10 @@ def select_patch(img, img_out, pos_y, pos_x,
         return sel_y, sel_x
     elif pos_y == 0:
         template = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + overlap_width]
-        simi_map = similarity(img[:-patch_height+overlap_height, :-patch_width+overlap_width], template, method='cv2')
+        simi_map = similarity(img[:-patch_height, :-patch_width+overlap_width], template, method='cv2')
     elif pos_x == 0:
         template = img_out[pos_y:pos_y + overlap_height, pos_x:pos_x + patch_width]
-        simi_map = similarity(img[:-patch_height+overlap_height, :-patch_width+overlap_width], template, method='cv2')
+        simi_map = similarity(img[:-patch_height+overlap_height, :-patch_width], template, method='cv2')
     else:
         template = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
         simi_map = similarity(img[:-patch_height+overlap_height, :-patch_width+overlap_width], template, method='ssd')
