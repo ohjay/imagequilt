@@ -38,11 +38,12 @@ DEFAULTS = {
     'target':        'in/owen_small.jpg',
     'outsize':       600,
     'patchsize':     60,
-    'overlap':       20,
+    'overlap':       30,
     'err_threshold': 0.15,
     'n':             8,
     'outdir':        'out',
 }
+DOUBLE_OVERLAP = False
 
 #####################
 # UTILITY FUNCTIONS #
@@ -64,7 +65,6 @@ def error_ssd(img, template):
             result[y, x] = ssd(img[y:y + t_h, x:x + t_w], template)
     return result
 
-@timed('ssd_vectorized')
 def error_ssd_vectorized(img, template):
     """I vectorized it but it got even slower."""
     img_view = view_as_windows(img, template.shape) * (template != 0)
@@ -100,8 +100,8 @@ def process_similarity_map(simi_map, err_threshold):
         return [np.unravel_index(np.argmax(simi_map), simi_map.shape)]
     return zip(*p_choices)
 
-def select_patch(img, img_out, pos_y, pos_x,
-                 patch_height, patch_width, overlap_height, overlap_width, err_threshold):
+def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
+                 oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold):
     """Selects a patch from IMG to be placed in IMG_OUT with the top left corner at (POS_Y, POS_X).
     Returns the patch as a (y, x) tuple representing the position of its top left corner in IMG.
     """
@@ -112,20 +112,19 @@ def select_patch(img, img_out, pos_y, pos_x,
         return sel_y, sel_x
     u_choices = set()
     if pos_y > 0:
-        template = img_out[pos_y-overlap_height:pos_y, pos_x:pos_x + patch_width]
-        simi_map = similarity(img[:-patch_height - overlap_height, overlap_width:-patch_width], template, method='cv2')
-        u_choices = set([(y + overlap_height, x + overlap_width)
-                         for y, x in process_similarity_map(simi_map, err_threshold)])
+        template = img_out[pos_y - oh_subtrahend:pos_y + oh_addend, pos_x:pos_x + patch_width]
+        simi_map = similarity(img[:-patch_height - oh_subtrahend, ow_subtrahend:-patch_width], template, method='cv2')
+        u_choices = set(process_similarity_map(simi_map, err_threshold))
     l_choices = set()
     if pos_x > 0:
-        template = img_out[pos_y:pos_y + patch_height, pos_x - overlap_width:pos_x]
-        simi_map = similarity(img[overlap_height:-patch_height, :-patch_width - overlap_width], template, method='cv2')
-        l_choices = set([(y + overlap_width, x + overlap_width)
-                         for y, x in process_similarity_map(simi_map, err_threshold)])
+        template = img_out[pos_y:pos_y + patch_height, pos_x - ow_subtrahend:pos_x + ow_addend]
+        simi_map = similarity(img[oh_subtrahend:-patch_height, :-patch_width - ow_subtrahend], template, method='cv2')
+        l_choices = set(process_similarity_map(simi_map, err_threshold))
     choices = u_choices & l_choices
     if len(choices) == 0:
         choices = u_choices | l_choices
-    return tuple(choices)[np.random.randint(len(choices))]
+    y, x = tuple(choices)[np.random.randint(len(choices))]
+    return y + oh_subtrahend, x + ow_subtrahend
 
 def vcut(patch, overlapped):
     """Calculates the minimum error VERTICAL boundary cut through the overlapped region.
@@ -165,24 +164,29 @@ def synthesize(texture_path, out_height, out_width, patch_height, patch_width,
     img = sk.img_as_float(img).astype(np.float32)
     img_height, img_width, nc = img.shape
     img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
+    if DOUBLE_OVERLAP:
+        oh_subtrahend, oh_addend = overlap_height // 2, overlap_height - overlap_height // 2
+        ow_subtrahend, ow_addend = overlap_width // 2, overlap_width - overlap_width // 2
+    else:
+        oh_subtrahend, oh_addend = overlap_height, 0
+        ow_subtrahend, ow_addend = overlap_width, 0
     for y in range(0, out_height, patch_height):
         for x in range(0, out_width, patch_width):
             py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
-                                  overlap_height, overlap_width, err_threshold)
-            dy, dx, _ = img_out[y:y + patch_height, x:x + patch_width].shape  # account for overflow
+                                  oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold)
+            dy, dx, _ = img_out[y:y + patch_height + oh_addend, x:x + patch_width + ow_addend].shape  # manage overflow
             img_out[y:y + dy, x:x + dx] = img[py:py + dy, px:px + dx]
             if y > 0:
                 # Horizontal cut
-                y_patch = img[py - overlap_height:py, px:px + dx]
-                y_overlapped = img_out[y - overlap_height:y, x:x + dx]
+                y_patch = img[py - oh_subtrahend:py + oh_addend, px:px + dx]
+                y_overlapped = img_out[y - oh_subtrahend:y + oh_addend, x:x + dx]
                 ypt, yot = y_patch.transpose(1, 0, 2), y_overlapped.transpose(1, 0, 2)
-                img_out[y - overlap_height:y, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
+                img_out[y - oh_subtrahend:y + oh_addend, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
             if x > 0:
                 # Vertical cut
-                x_patch = img[py:py + dy, px - overlap_width:px]
-                x_overlapped = img_out[y:y + dy, x - overlap_width:x]
-                img_out[y:y + dy, x - overlap_width:x] = vcut(x_patch, x_overlapped)
-        print('%03d / %d ...' % (y, out_height))
+                x_patch = img[py:py + dy, px - ow_subtrahend:px + ow_addend]
+                x_overlapped = img_out[y:y + dy, x - ow_subtrahend:x + ow_addend]
+                img_out[y:y + dy, x - ow_subtrahend:x + ow_addend] = vcut(x_patch, x_overlapped)
     skio.imshow(img_out)
     skio.show()
     outpath = os.path.join(outdir, texture_path[texture_path.rfind('/') + 1:texture_path.rfind('.')] + '.jpg')
