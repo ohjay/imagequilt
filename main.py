@@ -39,14 +39,14 @@ DEFAULTS = {
     'target':        'in/owen_small.jpg',
     'outsize':       600,
     'patchsize':     60,
-    'overlap':       20,
-    'err_threshold': 0.5,
+    'overlap':       30,
+    'err_threshold': 0.7,
     'alpha_init':    0.1,
-    'n':             7,
+    'n':             8,
     'outdir':        'out',
 }
 DOUBLE_OVERLAP = False
-ITR_SCALE_FACTOR = 0.7
+ITR_SCALE_FACTOR = 0.75
 
 #####################
 # UTILITY FUNCTIONS #
@@ -115,7 +115,7 @@ def generate_transfer_similarity_map(img, img_out, pos_y, pos_x, patch_height, p
     if itr > 0:
         existing = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
         e_img = img[oh_subtrahend:-patch_height - oh_addend, ow_subtrahend:-patch_width - ow_addend]
-        simi_map += alpha * similarity(e_img, existing, method='cv2')
+        simi_map += 0.5 * alpha * similarity(e_img, existing, method='cv2')
     return simi_map
 
 def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
@@ -123,15 +123,15 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
     """Selects a patch from IMG to be placed in IMG_OUT with the top left corner at (POS_Y, POS_X).
     Returns the patch as a (y, x) tuple representing the position of its top left corner in IMG.
     """
-    transfer_simi_map, choices, alpha = (None for _ in range(3))
+    transfer_simi_map, choices, alpha, itr = (None for _ in range(4))
     if transfer_info is not None:
-        alpha = transfer_info[2]
+        alpha, itr = transfer_info[-2:]
         transfer_simi_map = generate_transfer_similarity_map(
             img, img_out, pos_y, pos_x, patch_height, patch_width,
             oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, transfer_info)
-    img_height, img_width, nc = img.shape
     if (pos_y, pos_x) == (0, 0):
         if transfer_info is None:
+            img_height, img_width, nc = img.shape
             sel_y = int(np.random.random_sample() * (img_height - patch_height))
             sel_x = int(np.random.random_sample() * (img_width - patch_width))
             return sel_y, sel_x
@@ -143,7 +143,8 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
         simi_map = similarity(_img, template, method='cv2')
         if transfer_info is not None:
             _h, _w = np.minimum(simi_map.shape, transfer_simi_map.shape)
-            simi_map = alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
+            _alpha = 0.5 * alpha if itr > 0 else alpha
+            simi_map = _alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
         u_choices = set(process_similarity_map(simi_map, err_threshold))
     l_choices = set()
     if pos_x > 0:
@@ -152,7 +153,8 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
         simi_map = similarity(_img, template, method='cv2')
         if transfer_info is not None:
             _h, _w = np.minimum(simi_map.shape, transfer_simi_map.shape)
-            simi_map = alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
+            _alpha = 0.5 * alpha if itr > 0 else alpha
+            simi_map = _alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
         l_choices = set(process_similarity_map(simi_map, err_threshold))
     if choices is None:
         choices = u_choices & l_choices
@@ -240,34 +242,29 @@ def transfer(texture_path, target_path, patch_height, patch_width,
     target_gray = rgb2gray(target_img).astype(np.float32)
     img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
     alpha = alpha_init
+    _scale = lambda v: max(1, int(v * ITR_SCALE_FACTOR))
     for itr in range(n):
         print('[o] Iteration %02d / %02d...' % (itr, n - 1))
-        if DOUBLE_OVERLAP:
-            oh_subtrahend, oh_addend = overlap_height // 2, overlap_height - overlap_height // 2
-            ow_subtrahend, ow_addend = overlap_width // 2, overlap_width - overlap_width // 2
-        else:
-            oh_subtrahend, oh_addend = overlap_height, 0
-            ow_subtrahend, ow_addend = overlap_width, 0
         for y in range(0, out_height, patch_height):
             for x in range(0, out_width, patch_width):
                 py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
-                                      oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold,
+                                      overlap_height, 0, overlap_width, 0, err_threshold,
                                       transfer_info=(img_gray, target_gray, alpha, itr))
-                dy, dx, _ = img_out[y:y + patch_height + oh_addend, x:x + patch_width + ow_addend].shape
+                dy, dx, _ = img_out[y:y + patch_height, x:x + patch_width].shape
                 img_out[y:y + dy, x:x + dx] = img[py:py + dy, px:px + dx]
                 if y > 0:
                     # Horizontal cut
-                    y_patch = img[py - oh_subtrahend:py + oh_addend, px:px + dx]
-                    y_overlapped = img_out[y - oh_subtrahend:y + oh_addend, x:x + dx]
+                    y_patch = img[py - overlap_height:py, px:px + dx]
+                    y_overlapped = img_out[y - overlap_height:y, x:x + dx]
                     ypt, yot = y_patch.transpose(1, 0, 2), y_overlapped.transpose(1, 0, 2)
-                    img_out[y - oh_subtrahend:y + oh_addend, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
+                    img_out[y - overlap_height:y, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
                 if x > 0:
                     # Vertical cut
-                    x_patch = img[py:py + dy, px - ow_subtrahend:px + ow_addend]
-                    x_overlapped = img_out[y:y + dy, x - ow_subtrahend:x + ow_addend]
-                    img_out[y:y + dy, x - ow_subtrahend:x + ow_addend] = vcut(x_patch, x_overlapped)
-        patch_height, patch_width = int(patch_height * ITR_SCALE_FACTOR), int(patch_width * ITR_SCALE_FACTOR)
-        overlap_height, overlap_width = int(overlap_height * ITR_SCALE_FACTOR), int(overlap_width * ITR_SCALE_FACTOR)
+                    x_patch = img[py:py + dy, px - overlap_width:px]
+                    x_overlapped = img_out[y:y + dy, x - overlap_width:x]
+                    img_out[y:y + dy, x - overlap_width:x] = vcut(x_patch, x_overlapped)
+        patch_height, patch_width = _scale(patch_height), _scale(patch_width)
+        overlap_height, overlap_width = _scale(overlap_height), _scale(overlap_width)
         err_threshold /= 2
         alpha = alpha_init + (0.9 - alpha_init) * (itr + 1) / (n - 1)
     skio.imshow(img_out)
