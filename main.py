@@ -36,10 +36,10 @@ except ImportError:
 DEFAULTS = {
     'texture':       'in/bricks_small.jpg',
     'target':        'in/owen_small.jpg',
-    'outsize':       576,
-    'patchsize':     32,
-    'overlap':       16,
-    'err_threshold': 0.00,
+    'outsize':       600,
+    'patchsize':     30,
+    'overlap':       10,
+    'err_threshold': 0.95,
     'n':             8,
     'outdir':        'out',
 }
@@ -67,8 +67,7 @@ def error_ssd(img, template):
 @timed('ssd_vectorized')
 def error_ssd_vectorized(img, template):
     """I vectorized it but it got even slower."""
-    img_view = view_as_windows(img, template.shape)
-    img_view = np.ma.masked_where(np.broadcast_to(template == 0, img_view.shape), img_view).filled(0)
+    img_view = view_as_windows(img, template.shape) * (template != 0)
     return ((img_view - template) ** 2).sum(axis=(2, 3, 4, 5))
 
 def similarity_cv2(img, template):
@@ -110,7 +109,9 @@ def select_patch(img, img_out, pos_y, pos_x,
         template = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
         simi_map = similarity(img[:-patch_height+overlap_height, :-patch_width+overlap_width], template, method='ssd')
     _min, _max = np.min(simi_map), np.max(simi_map)
-    pchoices = np.where(simi_map >= _min + (1.0 - err_threshold) * (_max - _min) - 1e-9)
+    pchoices = np.where(simi_map >= _min + (1.0 - err_threshold) * (_max - _min))
+    if len(pchoices[0]) == 0:
+        return np.unravel_index(np.argmax(simi_map), simi_map.shape)
     return np.random.choice(pchoices[0]), np.random.choice(pchoices[1])
 
 def cut(patch, overlapped, pos_y, pos_x, overlap_height, overlap_width):
@@ -129,15 +130,15 @@ def cut(patch, overlapped, pos_y, pos_x, overlap_height, overlap_width):
                                                                     cum_err_surface[y - 1, min(x + 1, width - 1)]))
         x = None
         result = np.zeros_like(_patch)
-        for y in range(height - 1, -1, -1):
+        for y in reversed(range(height)):
             if x is None:
                 x = np.argmin(cum_err_surface[y])
             else:
-                err_options = [
+                err_options = (
                     float('inf') if x - 1 < 0 else cum_err_surface[y, x - 1],
                     cum_err_surface[y, x],
                     float('inf') if x + 1 >= width else cum_err_surface[y, x + 1],
-                ]
+                )
                 x += np.argmin(err_options) - 1
             result[y, :x] = _overlapped[y, :x]
             result[y, x:] = _patch[y, x:]
@@ -172,7 +173,7 @@ def synthesize(texture_path, out_height, out_width, patch_height, patch_width,
             _dy, _dx, _ = np.minimum(img_out[y:y + patch_height, x:x + patch_width].shape, patch.shape)
             img_out[y:y + _dy, x:x + _dx] = cut(patch[:_dy, :_dx], img_out[y:y + _dy, x:x + _dx],
                                                 y, x, overlap_height, overlap_width)
-        print('%d / %d ...' % (y, out_height))
+        print('%03d / %d ...' % (y, out_height))
     skio.imshow(img_out)
     skio.show()
     outpath = os.path.join(outdir, texture_path[texture_path.rfind('/') + 1:texture_path.rfind('.')] + '.jpg')
