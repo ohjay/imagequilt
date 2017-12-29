@@ -14,7 +14,7 @@ Usage:
     [--out_height <int>] [--out_width <int>] [--outsize <int>]
     [--patch_height <int>] [--patch_width <int>] [--patchsize <int>]
     [--overlap_height <int>] [--overlap_width <int>] [--overlap <int>]
-    [--err_threshold <float>] [--n <int>] [--outdir <str>]
+    [--err_threshold <float>] [--alpha_init <float>] [--n <int>] [--outdir <str>]
 
 e.g.
     main.py --texture in/bricks_small.jpg --outsize 576 --patchsize 32 --overlap 16
@@ -26,6 +26,7 @@ import argparse
 import numpy as np
 import skimage as sk
 import skimage.io as skio
+from skimage.color import rgb2gray
 from skimage.util import view_as_windows
 from performance import timed
 try:
@@ -34,16 +35,18 @@ except ImportError:
     pass
 
 DEFAULTS = {
-    'texture':       'in/bricks_small.jpg',
+    'texture':       'in/sn_small.jpg',
     'target':        'in/owen_small.jpg',
     'outsize':       600,
     'patchsize':     60,
-    'overlap':       30,
-    'err_threshold': 0.15,
-    'n':             8,
+    'overlap':       20,
+    'err_threshold': 0.5,
+    'alpha_init':    0.1,
+    'n':             7,
     'outdir':        'out',
 }
 DOUBLE_OVERLAP = False
+ITR_SCALE_FACTOR = 0.7
 
 #####################
 # UTILITY FUNCTIONS #
@@ -100,36 +103,66 @@ def process_similarity_map(simi_map, err_threshold):
         return [np.unravel_index(np.argmax(simi_map), simi_map.shape)]
     return zip(*p_choices)
 
+def generate_transfer_similarity_map(img, img_out, pos_y, pos_x, patch_height, patch_width,
+                                     oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, transfer_info):
+    """Generates the transfer component of the similarity map, namely
+    alpha * similarity(patch, existing output) + (1 - alpha) * similarity(patch, target image).
+    """
+    img_gray, target_gray, alpha, itr = transfer_info
+    target = target_gray[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
+    t_img = img_gray[oh_subtrahend:-patch_height - oh_addend, ow_subtrahend:-patch_width - ow_addend]
+    simi_map = (1 - alpha) * similarity(t_img, target, method='cv2')
+    if itr > 0:
+        existing = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
+        e_img = img[oh_subtrahend:-patch_height - oh_addend, ow_subtrahend:-patch_width - ow_addend]
+        simi_map += alpha * similarity(e_img, existing, method='cv2')
+    return simi_map
+
 def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
-                 oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold):
+                 oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold, transfer_info=None):
     """Selects a patch from IMG to be placed in IMG_OUT with the top left corner at (POS_Y, POS_X).
     Returns the patch as a (y, x) tuple representing the position of its top left corner in IMG.
     """
+    transfer_simi_map, choices, alpha = (None for _ in range(3))
+    if transfer_info is not None:
+        alpha = transfer_info[2]
+        transfer_simi_map = generate_transfer_similarity_map(
+            img, img_out, pos_y, pos_x, patch_height, patch_width,
+            oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, transfer_info)
     img_height, img_width, nc = img.shape
     if (pos_y, pos_x) == (0, 0):
-        sel_y = int(np.random.random_sample() * (img_height - patch_height))
-        sel_x = int(np.random.random_sample() * (img_width - patch_width))
-        return sel_y, sel_x
+        if transfer_info is None:
+            sel_y = int(np.random.random_sample() * (img_height - patch_height))
+            sel_x = int(np.random.random_sample() * (img_width - patch_width))
+            return sel_y, sel_x
+        choices = set(process_similarity_map(transfer_simi_map, err_threshold))
     u_choices = set()
     if pos_y > 0:
         template = img_out[pos_y - oh_subtrahend:pos_y + oh_addend, pos_x:pos_x + patch_width]
         _img = img[:-patch_height - oh_subtrahend - oh_addend, ow_subtrahend:-patch_width - ow_addend]
         simi_map = similarity(_img, template, method='cv2')
+        if transfer_info is not None:
+            _h, _w = np.minimum(simi_map.shape, transfer_simi_map.shape)
+            simi_map = alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
         u_choices = set(process_similarity_map(simi_map, err_threshold))
     l_choices = set()
     if pos_x > 0:
         template = img_out[pos_y:pos_y + patch_height, pos_x - ow_subtrahend:pos_x + ow_addend]
         _img = img[oh_subtrahend:-patch_height - oh_addend, :-patch_width - ow_subtrahend - ow_addend]
         simi_map = similarity(_img, template, method='cv2')
+        if transfer_info is not None:
+            _h, _w = np.minimum(simi_map.shape, transfer_simi_map.shape)
+            simi_map = alpha * simi_map[:_h, :_w] + transfer_simi_map[:_h, :_w]
         l_choices = set(process_similarity_map(simi_map, err_threshold))
-    choices = u_choices & l_choices
-    if len(choices) == 0:
-        choices = u_choices | l_choices
+    if choices is None:
+        choices = u_choices & l_choices
+        if len(choices) == 0:
+            choices = u_choices | l_choices
     y, x = tuple(choices)[np.random.randint(len(choices))]
     return y + oh_subtrahend, x + ow_subtrahend
 
 def vcut(patch, overlapped):
-    """Calculates the minimum error VERTICAL boundary cut through the overlapped region.
+    """Calculates the minimum error VERTICAL cut through the overlapped region.
     Then (using that information) cuts the patch, joins it with the overlapped image, and returns the amalgamation.
     """
     err_surface = np.sum((patch - overlapped) ** 2, axis=2)
@@ -196,8 +229,54 @@ def synthesize(texture_path, out_height, out_width, patch_height, patch_width,
     print('Output saved to %s.' % outpath)
 
 def transfer(texture_path, target_path, patch_height, patch_width,
-             overlap_height, overlap_width, err_threshold, n, outdir):
-    pass
+             overlap_height, overlap_width, err_threshold, alpha_init, n, outdir):
+    img = skio.imread(texture_path)
+    img = sk.img_as_float(img).astype(np.float32)
+    img_height, img_width, nc = img.shape
+    img_gray = rgb2gray(img).astype(np.float32)
+    target_img = skio.imread(target_path)
+    target_img = sk.img_as_float(target_img).astype(np.float32)
+    out_height, out_width, _ = target_img.shape
+    target_gray = rgb2gray(target_img).astype(np.float32)
+    img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
+    alpha = alpha_init
+    for itr in range(n):
+        print('[o] Iteration %02d / %02d...' % (itr, n - 1))
+        if DOUBLE_OVERLAP:
+            oh_subtrahend, oh_addend = overlap_height // 2, overlap_height - overlap_height // 2
+            ow_subtrahend, ow_addend = overlap_width // 2, overlap_width - overlap_width // 2
+        else:
+            oh_subtrahend, oh_addend = overlap_height, 0
+            ow_subtrahend, ow_addend = overlap_width, 0
+        for y in range(0, out_height, patch_height):
+            for x in range(0, out_width, patch_width):
+                py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
+                                      oh_subtrahend, oh_addend, ow_subtrahend, ow_addend, err_threshold,
+                                      transfer_info=(img_gray, target_gray, alpha, itr))
+                dy, dx, _ = img_out[y:y + patch_height + oh_addend, x:x + patch_width + ow_addend].shape
+                img_out[y:y + dy, x:x + dx] = img[py:py + dy, px:px + dx]
+                if y > 0:
+                    # Horizontal cut
+                    y_patch = img[py - oh_subtrahend:py + oh_addend, px:px + dx]
+                    y_overlapped = img_out[y - oh_subtrahend:y + oh_addend, x:x + dx]
+                    ypt, yot = y_patch.transpose(1, 0, 2), y_overlapped.transpose(1, 0, 2)
+                    img_out[y - oh_subtrahend:y + oh_addend, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
+                if x > 0:
+                    # Vertical cut
+                    x_patch = img[py:py + dy, px - ow_subtrahend:px + ow_addend]
+                    x_overlapped = img_out[y:y + dy, x - ow_subtrahend:x + ow_addend]
+                    img_out[y:y + dy, x - ow_subtrahend:x + ow_addend] = vcut(x_patch, x_overlapped)
+        patch_height, patch_width = int(patch_height * ITR_SCALE_FACTOR), int(patch_width * ITR_SCALE_FACTOR)
+        overlap_height, overlap_width = int(overlap_height * ITR_SCALE_FACTOR), int(overlap_width * ITR_SCALE_FACTOR)
+        err_threshold /= 2
+        alpha = alpha_init + (0.9 - alpha_init) * (itr + 1) / (n - 1)
+    skio.imshow(img_out)
+    skio.show()
+    texture_base = texture_path[texture_path.rfind('/') + 1:texture_path.rfind('.')]
+    target_base = target_path[target_path.rfind('/') + 1:target_path.rfind('.')]
+    outpath = os.path.join(outdir, texture_base + '_' + target_base + '.jpg')
+    skio.imsave(outpath, img_out)
+    print('Output saved to %s.' % outpath)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -213,7 +292,8 @@ if __name__ == '__main__':
     parser.add_argument('--overlap_width',  '-ovw', type=int)
     parser.add_argument('--overlap',        '-ov',  type=int)
     parser.add_argument('--err_threshold',  '-tol', type=float)
-    parser.add_argument('--n',              '-n',   type=int, default=5)
+    parser.add_argument('--alpha_init',     '-a',   type=float)
+    parser.add_argument('--n',              '-n',   type=int)
     parser.add_argument('--outdir',         '-out', type=str)
     args = parser.parse_args()
 
@@ -244,10 +324,12 @@ if __name__ == '__main__':
         # Texture transfer
         if not args.target:
             args.target = DEFAULTS['target']
+        if not args.alpha_init:
+            args.alpha_init = DEFAULTS['alpha_init']
         if not args.n:
             args.n = DEFAULTS['n']
         transfer(args.texture, args.target, args.patch_height, args.patch_width,
-                 args.overlap_height, args.overlap_width, args.err_threshold, args.n, args.outdir)
+                 args.overlap_height, args.overlap_width, args.err_threshold, args.alpha_init, args.n, args.outdir)
     else:
         # Texture synthesis
         if not args.outsize:
