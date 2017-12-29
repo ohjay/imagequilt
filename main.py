@@ -175,8 +175,8 @@ def synthesize(texture_path, out_height, out_width, patch_height, patch_width,
                 # Horizontal cut
                 y_patch = img[py - overlap_height:py, px:px + dx]
                 y_overlapped = img_out[y - overlap_height:y, x:x + dx]
-                ypt, yot = np.fliplr(y_patch.transpose(1, 0, 2)), np.fliplr(y_overlapped.transpose(1, 0, 2))
-                img_out[y - overlap_height:y, x:x + dx] = np.fliplr(vcut(ypt, yot)).transpose(1, 0, 2)
+                ypt, yot = y_patch.transpose(1, 0, 2), y_overlapped.transpose(1, 0, 2)
+                img_out[y - overlap_height:y, x:x + dx] = vcut(ypt, yot).transpose(1, 0, 2)
             if x > 0:
                 # Vertical cut
                 x_patch = img[py:py + dy, px - overlap_width:px]
