@@ -113,12 +113,14 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
     u_choices = set()
     if pos_y > 0:
         template = img_out[pos_y - oh_subtrahend:pos_y + oh_addend, pos_x:pos_x + patch_width]
-        simi_map = similarity(img[:-patch_height - oh_subtrahend, ow_subtrahend:-patch_width], template, method='cv2')
+        _img = img[:-patch_height - oh_subtrahend - oh_addend, ow_subtrahend:-patch_width - ow_addend]
+        simi_map = similarity(_img, template, method='cv2')
         u_choices = set(process_similarity_map(simi_map, err_threshold))
     l_choices = set()
     if pos_x > 0:
         template = img_out[pos_y:pos_y + patch_height, pos_x - ow_subtrahend:pos_x + ow_addend]
-        simi_map = similarity(img[oh_subtrahend:-patch_height, :-patch_width - ow_subtrahend], template, method='cv2')
+        _img = img[oh_subtrahend:-patch_height - oh_addend, :-patch_width - ow_subtrahend - ow_addend]
+        simi_map = similarity(_img, template, method='cv2')
         l_choices = set(process_similarity_map(simi_map, err_threshold))
     choices = u_choices & l_choices
     if len(choices) == 0:
