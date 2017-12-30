@@ -266,7 +266,7 @@ def transfer(texture_path, target_path, patch_height, patch_width,
                     img_out[y:y + dy, x - overlap_width:x] = vcut(x_patch, x_overlapped)
         patch_height, patch_width = _scale(patch_height), _scale(patch_width)
         overlap_height, overlap_width = _scale(overlap_height), _scale(overlap_width)
-        err_threshold /= 2
+        err_threshold *= 0.5
         alpha = alpha_init + (0.9 - alpha_init) * (itr + 1) / (n - 1)
     skio.imshow(img_out)
     skio.show()
