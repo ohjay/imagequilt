@@ -17,7 +17,7 @@ import skimage.io as skio
 from skimage.color import rgb2gray
 from performance import timed
 
-ITR_SCALE = 0.7
+ITR_SCALE = 0.65
 CHECKPOINT = True
 
 #####################
@@ -150,9 +150,9 @@ if __name__ == '__main__':
     parser.add_argument('--overlap_height', '-ovh', type=int)
     parser.add_argument('--overlap_width',  '-ovw', type=int)
     parser.add_argument('--overlap',        '-ov',  type=int)
-    parser.add_argument('--err_threshold',  '-tol', type=float, default=0.5)
+    parser.add_argument('--err_threshold',  '-tol', type=float, default=0.05)
     parser.add_argument('--alpha_init',     '-a',   type=float, default=0.1)
-    parser.add_argument('--n',              '-n',   type=int,   default=10)
+    parser.add_argument('--n',              '-n',   type=int,   default=8)
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
     args = parser.parse_args()
 
@@ -164,7 +164,8 @@ if __name__ == '__main__':
     out_height, out_width, _ = target_img.shape
 
     if not args.patchsize:
-        args.patchsize = max(1, min(img_height // 2, out_width // 10))
+        _min_dim = min(img_height, img_width)
+        args.patchsize = max(1, min(_min_dim // 2, out_width // 10))
     if not args.patch_height:
         args.patch_height = args.patchsize
     if not args.patch_width:
