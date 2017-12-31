@@ -18,13 +18,13 @@ python main.py --texture <texture_path> --target <target_path> --patch_height <i
 
 In all of the above commands, any omitted parameters will adhere to the following defaults:
 ```python
-out_height     = max(576, image_height * 2)
-out_width      = max(576, image width  * 2)
-patch_height   = min(32,  image_height * 0.25)
-patch_width    = min(32,  image_width  * 0.25)
-overlap_height = min(16,  patch_height * 0.5)
-overlap_width  = min(16,  patch_width  * 0.5)
-err_threshold  = 0.05
+out_height     = max(image_height, image_width) * 3
+out_width      = max(image_height, image_width) * 3
+patch_height   = max(1, min(image_height, image_width) // 3)
+patch_width    = max(1, min(image_height, image_width) // 3)
+overlap_height = max(1, patch_height // 3)
+overlap_width  = max(1, patch_width  // 3)
+err_threshold  = 0.15 if synthesis, 0.05 if transfer
 alpha_init     = 0.1
 n              = 8
 outdir         = 'out'

@@ -64,8 +64,7 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
             if itr > 0:
                 err_map[y, x] += 0.5 * alpha * ssd(img[y:y + ep_height, x:x + ep_width], existing_patch)
 
-    _min, _max = np.min(err_map), np.max(err_map[np.isfinite(err_map)])
-    p_choices = np.where(err_map <= _min + err_threshold * (_max - _min))
+    p_choices = np.where(err_map <= np.min(err_map) * (1.0 + err_threshold))
     if len(p_choices[0]) == 0:
         return np.unravel_index(np.argmin(err_map), err_map.shape)
     return np.random.choice(p_choices[0]), np.random.choice(p_choices[1])

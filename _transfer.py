@@ -25,6 +25,7 @@ except ImportError:
 
 ITR_SCALE = 0.65
 CHECKPOINT = True
+HIGH_FIDELITY = False
 
 #####################
 # UTILITY FUNCTIONS #
@@ -90,7 +91,8 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
     err_map.fill(np.inf)
     # Target error
     _img_gray = img_gray[overlap_height:, overlap_width:]
-    err_map[y_lower:y_upper, x_lower:x_upper] = (1.0 - alpha) * error(_img_gray, target_patch)
+    target_mult = 1.0 if HIGH_FIDELITY else 1.0 - alpha
+    err_map[y_lower:y_upper, x_lower:x_upper] = target_mult * error(_img_gray, target_patch)
     # Local texture error
     overlap_mult = 0.5 * alpha if pos_y > 0 and pos_x > 0 else alpha
     if itr > 0:
@@ -104,8 +106,7 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
         _img = img[overlap_height:, :-margin_right]
         err_map[y_lower:y_upper, x_lower:x_upper] += overlap_mult * error(_img, img_out_left)
 
-    _min, _max = np.min(err_map), np.max(err_map[np.isfinite(err_map)])
-    p_choices = np.where(err_map <= _min + err_threshold * (_max - _min))
+    p_choices = np.where(err_map <= np.min(err_map) * (1.0 + err_threshold))
     if len(p_choices[0]) == 0:
         return np.unravel_index(np.argmin(err_map), err_map.shape)
     return np.random.choice(p_choices[0]), np.random.choice(p_choices[1])
