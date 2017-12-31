@@ -34,6 +34,7 @@ try:
 except ImportError:
     pass
 
+DEFAULT_TEXTURE = 'in/sn_small.jpg'
 DOUBLE_OVERLAP = False
 ITR_SCALE = 0.65
 HIGH_FIDELITY = False
@@ -274,8 +275,8 @@ def transfer(img, target_img, patch_height, patch_width,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--texture',        '-tex', type=str,   default='in/sn_small.jpg')
-    parser.add_argument('--target',         '-tar', type=str,   default='in/owen.jpg')
+    parser.add_argument('--texture',        '-tex', type=str)
+    parser.add_argument('--target',         '-tar', type=str)
     parser.add_argument('--out_height',     '-oh',  type=int)
     parser.add_argument('--out_width',      '-ow',  type=int)
     parser.add_argument('--outsize',        '-os',  type=int)
@@ -291,6 +292,9 @@ if __name__ == '__main__':
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
     args = parser.parse_args()
 
+    if not args.texture:
+        print('No texture provided! Falling back to default texture %s.' % DEFAULT_TEXTURE)
+        args.texture = DEFAULT_TEXTURE
     img = skio.imread(args.texture)
     img = sk.img_as_float(img).astype(np.float32)
     img_height, img_width, nc = img.shape
@@ -315,7 +319,8 @@ if __name__ == '__main__':
         target_img = sk.img_as_float(target_img).astype(np.float32)
         if not args.err_threshold:
             args.err_threshold = 0.05
-        outpath = os.path.join(args.outdir, texture_base + '.jpg')
+        target_base = args.target[args.target.rfind('/') + 1:args.target.rfind('.')]
+        outpath = os.path.join(args.outdir, texture_base + '_' + target_base + '.jpg')
         transfer(img, target_img, args.patch_height, args.patch_width, args.overlap_height, args.overlap_width,
                  args.err_threshold, args.alpha_init, args.n, outpath)
     else:
@@ -328,7 +333,6 @@ if __name__ == '__main__':
             args.out_width = args.outsize
         if not args.err_threshold:
             args.err_threshold = 0.15
-        target_base = args.target[args.target.rfind('/') + 1:args.target.rfind('.')]
-        outpath = os.path.join(args.outdir, texture_base + '_' + target_base + '.jpg')
+        outpath = os.path.join(args.outdir, texture_base + '.jpg')
         synthesis(img, args.out_height, args.out_width, args.patch_height, args.patch_width,
                   args.overlap_height, args.overlap_width, args.err_threshold, outpath)
