@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-_transfer_naive.py
+_transfer.py
 
 Image quilting as per Efros et al.:
 http://www.eecs.berkeley.edu/Research/Projects/CS/vision/papers/efros-siggraph01.pdf
@@ -10,12 +10,18 @@ Texture transfer.
 """
 
 import os
+import sys
 import argparse
 import numpy as np
 import skimage as sk
 import skimage.io as skio
 from skimage.color import rgb2gray
+from skimage.util import view_as_windows
 from performance import timed
+try:
+    import cv2
+except ImportError:
+    pass
 
 ITR_SCALE = 0.7
 CHECKPOINT = True
@@ -30,6 +36,40 @@ def ssd(img_patch, template):
     """
     return np.sum(((img_patch - template) ** 2)[template != 0])
 
+def error_ssd(img, template):
+    """Error metric: sum of squared differences with the template."""
+    i_h, i_w, _ = img.shape
+    t_h, t_w, _ = template.shape
+    result = np.zeros((i_h - t_h, i_w - t_w))
+    for y in range(i_h - t_h):
+        for x in range(i_w - t_w):
+            result[y, x] = ssd(img[y:y + t_h, x:x + t_w], template)
+    return result
+
+def error_ssd_vectorized(img, template):
+    """I vectorized it but it got even slower."""
+    img_view = view_as_windows(img, template.shape) * (template != 0)
+    return ((img_view - template) ** 2).sum(axis=(2, 3, 4, 5))
+
+def similarity_cv2(img, template):
+    """Similarity metric: convolution with the template.
+    Does not work for masked templates.
+    """
+    return cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
+
+def error(img, template):
+    """Returns the error map for all positions in IMG.
+    To this end there are multiple error metrics:
+    - ssd (error for each overlap computed as the SSD)
+    - cv2 (error for each overlap computed as -convolution similarity)
+
+    In this function one of these metrics will automatically be selected and applied.
+    """
+    if 'cv2' in sys.modules:
+        _simi_map = similarity_cv2(img, template)
+        return np.max(_simi_map) - _simi_map
+    return error_ssd(img, template)
+
 def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
                  overlap_height, overlap_width, err_threshold, transfer_info=None):
     """Selects a patch from IMG to be placed in IMG_OUT with the top left corner at (POS_Y, POS_X).
@@ -37,32 +77,32 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
     """
     img_gray, target_gray, alpha, itr = transfer_info
     img_out_above = img_out[pos_y - overlap_height:pos_y, pos_x:pos_x + patch_width]
-    ioa_width = img_out_above.shape[1]
     img_out_left = img_out[pos_y:pos_y + patch_height, pos_x - overlap_width:pos_x]
-    iol_height = img_out_left.shape[0]
     target_patch = target_gray[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
-    tp_height, tp_width = target_patch.shape
     existing_patch = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
-    ep_height, ep_width, _ = existing_patch.shape
+
+    # Define selection range within texture sample
+    margin_below, margin_right = img_out_left.shape[0], img_out_above.shape[1]
+    y_lower, y_upper = overlap_height, img_height - margin_below + 1
+    x_lower, x_upper = overlap_width, img_width - margin_right + 1
 
     err_map = np.empty((img_height, img_width))
     err_map.fill(np.inf)
-    for y in range(overlap_height, img_height - patch_height):
-        for x in range(overlap_width, img_width - patch_width):
-            err_map[y, x] = 0
-            # Overlap error
-            overlap_mult = 0.5 * alpha if pos_y > 0 and pos_x > 0 else alpha
-            if itr > 0:
-                overlap_mult *= 0.5
-            if pos_y > 0:
-                err_map[y, x] += overlap_mult * ssd(img[y - overlap_height:y, x:x + ioa_width], img_out_above)
-            if pos_x > 0:
-                err_map[y, x] += overlap_mult * ssd(img[y:y + iol_height, x - overlap_width:x], img_out_left)
-            # Target error
-            err_map[y, x] += (1 - alpha) * ssd(img_gray[y:y + tp_height, x:x + tp_width], target_patch)
-            # Error with existing patch
-            if itr > 0:
-                err_map[y, x] += 0.5 * alpha * ssd(img[y:y + ep_height, x:x + ep_width], existing_patch)
+    # Target error
+    _img_gray = img_gray[overlap_height:, overlap_width:]
+    err_map[y_lower:y_upper, x_lower:x_upper] = (1 - alpha) * error(_img_gray, target_patch)
+    # Local texture error
+    overlap_mult = 0.5 * alpha if pos_y > 0 and pos_x > 0 else alpha
+    if itr > 0:
+        overlap_mult *= 0.5
+        _img = img[overlap_height:, overlap_width:]
+        err_map[y_lower:y_upper, x_lower:x_upper] += 0.5 * alpha * error(_img, existing_patch)
+    if pos_y > 0:
+        _img = img[:-margin_below, overlap_width:]
+        err_map[y_lower:y_upper, x_lower:x_upper] += overlap_mult * error(_img, img_out_above)
+    if pos_x > 0:
+        _img = img[overlap_height:, :-margin_right]
+        err_map[y_lower:y_upper, x_lower:x_upper] += overlap_mult * error(_img, img_out_left)
 
     _min, _max = np.min(err_map), np.max(err_map[np.isfinite(err_map)])
     p_choices = np.where(err_map <= _min + err_threshold * (_max - _min))
@@ -114,8 +154,9 @@ def transfer(img, target_img, patch_height, patch_width,
         print('[o] Iteration %02d / %02d...' % (itr + 1, n))
         for y in range(0, out_height, patch_height):
             for x in range(0, out_width, patch_width):
-                py, px = select_patch(img, img_out, y, x, patch_height, patch_width, overlap_height, overlap_width,
-                                      err_threshold, transfer_info=(img_gray, target_gray, alpha, itr))
+                py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
+                                      overlap_height, overlap_width, err_threshold,
+                                      transfer_info=(img_gray, target_gray, alpha, itr))
                 dy, dx, _ = img_out[y:y + patch_height, x:x + patch_width].shape
                 img_out[y:y + dy, x:x + dx] = img[py:py + dy, px:px + dx]
                 if y > 0:

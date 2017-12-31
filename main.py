@@ -46,7 +46,7 @@ DEFAULTS = {
     'outdir':        'out',
 }
 DOUBLE_OVERLAP = False
-ITR_SCALE_FACTOR = 0.75
+ITR_SCALE = 0.75
 
 #####################
 # UTILITY FUNCTIONS #
@@ -243,9 +243,9 @@ def transfer(texture_path, target_path, patch_height, patch_width,
     target_gray = rgb2gray(target_img).astype(np.float32)
     img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
     alpha = alpha_init
-    _scale = lambda v: max(1, int(v * ITR_SCALE_FACTOR))
+    _scale = lambda v: max(1, int(v * ITR_SCALE))
     for itr in range(n):
-        print('[o] Iteration %02d / %02d...' % (itr, n - 1))
+        print('[o] Iteration %02d / %02d...' % (itr + 1, n))
         for y in range(0, out_height, patch_height):
             for x in range(0, out_width, patch_width):
                 py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
