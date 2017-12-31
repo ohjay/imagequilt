@@ -134,7 +134,7 @@ def transfer(img, target_img, patch_height, patch_width,
         err_threshold *= 0.5
         alpha = alpha_init + (0.9 - alpha_init) * (itr + 1) / (n - 1)
         if CHECKPOINT and itr < n - 1:
-            skio.imsave(outpath[:-4] + '_itr%d.jpg' % itr, img_out)
+            skio.imsave(outpath[:-4] + '_itr%d.jpg' % (itr + 1), img_out)
     skio.imshow(img_out)
     skio.show()
     skio.imsave(outpath, img_out)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     parser.add_argument('--overlap',        '-ov',  type=int)
     parser.add_argument('--err_threshold',  '-tol', type=float, default=0.5)
     parser.add_argument('--alpha_init',     '-a',   type=float, default=0.1)
-    parser.add_argument('--n',              '-n',   type=int,   default=8)
+    parser.add_argument('--n',              '-n',   type=int,   default=10)
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
     args = parser.parse_args()
 
@@ -164,14 +164,14 @@ if __name__ == '__main__':
     out_height, out_width, _ = target_img.shape
 
     if not args.patchsize:
-        args.patchsize = out_width // 10
+        args.patchsize = max(1, min(img_height // 2, out_width // 10))
     if not args.patch_height:
         args.patch_height = args.patchsize
     if not args.patch_width:
         args.patch_width = args.patchsize
 
     if not args.overlap:
-        args.overlap = args.patchsize // 3
+        args.overlap = max(1, args.patchsize // 3)
     if not args.overlap_height:
         args.overlap_height = args.overlap
     if not args.overlap_width:
