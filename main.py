@@ -228,10 +228,10 @@ def synthesis(img, out_height, out_width, patch_height, patch_width,
                 x_patch = img[py:py + dy, px - ow_subtrahend:px + ow_addend]
                 x_overlapped = img_out[y:y + dy, x - ow_subtrahend:x + ow_addend]
                 img_out[y:y + dy, x - ow_subtrahend:x + ow_addend] = vcut(x_patch, x_overlapped)
-    skio.imshow(img_out)
-    skio.show()
     skio.imsave(outpath, img_out)
     print('Output saved to %s.' % outpath)
+    skio.imshow(img_out)
+    skio.show()
 
 def transfer(img, target_img, patch_height, patch_width,
              overlap_height, overlap_width, err_threshold, alpha_init, n, outpath):
@@ -264,10 +264,10 @@ def transfer(img, target_img, patch_height, patch_width,
         alpha = alpha_init + (0.9 - alpha_init) * (itr + 1) / (n - 1)
         if itr < n - 1:
             skio.imsave(outpath[:-4] + '_itr%d.jpg' % (itr + 1), img_out)
-    skio.imshow(img_out)
-    skio.show()
     skio.imsave(outpath, img_out)
     print('Output saved to %s.' % outpath)
+    skio.imshow(img_out)
+    skio.show()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
