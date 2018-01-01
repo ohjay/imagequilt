@@ -51,11 +51,8 @@ def error_ssd_vectorized(img, template):
     img_view = view_as_windows(img, template.shape) * (template != 0)
     return ((img_view - template) ** 2).sum(axis=(2, 3, 4, 5))
 
-def similarity_cv2(img, template):
-    """Similarity metric: convolution with the template.
-    Does not work for masked templates.
-    """
-    return cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
+def error_cv2(img, template):
+    return cv2.matchTemplate(img, template, cv2.TM_SQDIFF)
 
 def error(img, template):
     """Returns the error map for all positions in IMG.
@@ -66,8 +63,7 @@ def error(img, template):
     In this function one of these metrics will automatically be selected and applied.
     """
     if 'cv2' in sys.modules:
-        _simi_map = similarity_cv2(img, template)
-        return np.max(_simi_map) - _simi_map
+        return error_cv2(img, template)
     return error_ssd(img, template)
 
 def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,

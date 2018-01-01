@@ -63,11 +63,20 @@ def error_ssd_vectorized(img, template):
     img_view = view_as_windows(img, template.shape) * (template != 0)
     return ((img_view - template) ** 2).sum(axis=(2, 3, 4, 5))
 
+def error_cv2(img, template):
+    return cv2.matchTemplate(img, template, cv2.TM_SQDIFF)
+
 def similarity_cv2(img, template):
     """Similarity metric: convolution with the template.
     Does not work for masked templates.
     """
     return cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
+
+def error(img, template, method='cv2'):
+    """Returns the error map for all relevant positions in IMG."""
+    if method == 'cv2' and 'cv2' in sys.modules:
+        return error_cv2(img, template)
+    return error_ssd(img, template)
 
 def similarity(img, template, method='cv2'):
     """Returns the similarity map for all relevant positions in IMG.
@@ -81,13 +90,6 @@ def similarity(img, template, method='cv2'):
         return similarity_cv2(img, template)
     _err_map = error_ssd(img, template)
     return np.max(_err_map) - _err_map
-
-def error(img, template, method='cv2'):
-    """Returns the error map for all relevant positions in IMG."""
-    if method == 'cv2' and 'cv2' in sys.modules:
-        _simi_map = similarity_cv2(img, template)
-        return np.max(_simi_map) - _simi_map
-    return error_ssd(img, template)
 
 def process_similarity_map(simi_map, err_threshold):
     """Takes a similarity map and an error threshold
