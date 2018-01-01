@@ -1,6 +1,10 @@
 # `imagequilt`
 Reimplementation of [_Image Quilting for Texture Synthesis and Transfer_](https://www2.eecs.berkeley.edu/Research/Projects/CS/vision/papers/efros-siggraph01.pdf) (by Efros and Freeman).
 
+![synthesis examples 0](out/examples0.jpg)
+![synthesis examples 1](out/examples1.jpg)
+![transfer examples](out/examples2.jpg)
+
 ## Usage
 #### Synthesizing texture
 ```
