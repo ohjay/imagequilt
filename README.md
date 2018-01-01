@@ -26,7 +26,7 @@ overlap_height = max(1, patch_height // 3)
 overlap_width  = max(1, patch_width  // 3)
 err_threshold  = 0.15 if synthesis, 0.00 if transfer
 alpha_init     = 0.1
-n              = 8
+n              = 7
 high_fidelity  = False
 outdir         = 'out'
 ```

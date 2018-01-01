@@ -109,6 +109,7 @@ def select_patch_synthesis(img, img_out, pos_y, pos_x, patch_height, patch_width
     Returns the patch as a (y, x) tuple representing the position of its top left corner in IMG.
     """
     if (pos_y, pos_x) == (0, 0):
+        img_height, img_width, nc = img.shape
         sel_y = int(np.random.random_sample() * (img_height - patch_height))
         sel_x = int(np.random.random_sample() * (img_width - patch_width))
         return sel_y, sel_x
@@ -141,6 +142,7 @@ def select_patch_transfer(img, img_out, pos_y, pos_x, patch_height, patch_width,
     existing_patch = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
 
     # Define selection range within texture sample
+    img_height, img_width, nc = img.shape
     margin_below, margin_right = img_out_left.shape[0], img_out_above.shape[1]
     y_lower, y_upper = overlap_height, img_height - margin_below + 1
     x_lower, x_upper = overlap_width, img_width - margin_right + 1
@@ -202,7 +204,7 @@ def vcut(patch, overlapped):
 
 def synthesis(img, out_height, out_width, patch_height, patch_width,
               overlap_height, overlap_width, err_threshold, outpath):
-    img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
+    img_out = np.zeros((out_height, out_width, img.shape[2])).astype(np.float32)
     if DOUBLE_OVERLAP:
         oh_subtrahend, oh_addend = overlap_height // 2, overlap_height - overlap_height // 2
         ow_subtrahend, ow_addend = overlap_width // 2, overlap_width - overlap_width // 2
@@ -234,7 +236,7 @@ def synthesis(img, out_height, out_width, patch_height, patch_width,
 def transfer(img, target_img, patch_height, patch_width,
              overlap_height, overlap_width, err_threshold, alpha_init, n, outpath):
     out_height, out_width, _ = target_img.shape
-    img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
+    img_out = np.zeros((out_height, out_width, img.shape[2])).astype(np.float32)
     alpha = alpha_init
     _scale = lambda v: max(1, int(v * ITR_SCALE))
     for itr in range(n):
@@ -282,7 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--overlap',        '-ov',  type=int)
     parser.add_argument('--err_threshold',  '-tol', type=float)
     parser.add_argument('--alpha_init',     '-a',   type=float, default=0.1)
-    parser.add_argument('--n',              '-n',   type=int,   default=8)
+    parser.add_argument('--n',              '-n',   type=int,   default=7)
     parser.add_argument('--high_fidelity',  '-hf',  action='store_true')
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
     args = parser.parse_args()
