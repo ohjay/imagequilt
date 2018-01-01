@@ -15,7 +15,6 @@ import argparse
 import numpy as np
 import skimage as sk
 import skimage.io as skio
-from skimage.color import rgb2gray
 from skimage.util import view_as_windows
 from performance import timed
 try:
@@ -72,14 +71,13 @@ def error(img, template):
     return error_ssd(img, template)
 
 def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
-                 overlap_height, overlap_width, err_threshold, transfer_info=None):
+                 overlap_height, overlap_width, err_threshold, target_img, alpha, itr):
     """Selects a patch from IMG to be placed in IMG_OUT with the top left corner at (POS_Y, POS_X).
     Returns the patch as a (y, x) tuple representing the position of its top left corner in IMG.
     """
-    img_gray, target_gray, alpha, itr = transfer_info
     img_out_above = img_out[pos_y - overlap_height:pos_y, pos_x:pos_x + patch_width]
     img_out_left = img_out[pos_y:pos_y + patch_height, pos_x - overlap_width:pos_x]
-    target_patch = target_gray[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
+    target_patch = target_img[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
     existing_patch = img_out[pos_y:pos_y + patch_height, pos_x:pos_x + patch_width]
 
     # Define selection range within texture sample
@@ -90,14 +88,13 @@ def select_patch(img, img_out, pos_y, pos_x, patch_height, patch_width,
     err_map = np.empty((img_height, img_width))
     err_map.fill(np.inf)
     # Target error
-    _img_gray = img_gray[overlap_height:, overlap_width:]
+    _img = img[overlap_height:, overlap_width:]
     target_mult = 1.0 if HIGH_FIDELITY else 1.0 - alpha
-    err_map[y_lower:y_upper, x_lower:x_upper] = target_mult * error(_img_gray, target_patch)
+    err_map[y_lower:y_upper, x_lower:x_upper] = target_mult * error(_img, target_patch)
     # Local texture error
     overlap_mult = 0.5 * alpha if pos_y > 0 and pos_x > 0 else alpha
     if itr > 0:
         overlap_mult *= 0.5
-        _img = img[overlap_height:, overlap_width:]
         err_map[y_lower:y_upper, x_lower:x_upper] += 0.5 * alpha * error(_img, existing_patch)
     if pos_y > 0:
         _img = img[:-margin_below, overlap_width:]
@@ -146,8 +143,6 @@ def vcut(patch, overlapped):
 @timed('Texture transfer')
 def transfer(img, target_img, patch_height, patch_width,
              overlap_height, overlap_width, err_threshold, alpha_init, n, outpath):
-    img_gray = rgb2gray(img).astype(np.float32)
-    target_gray = rgb2gray(target_img).astype(np.float32)
     img_out = np.zeros((out_height, out_width, nc)).astype(np.float32)
     alpha = alpha_init
     _scale = lambda v: max(1, int(v * ITR_SCALE))
@@ -156,8 +151,7 @@ def transfer(img, target_img, patch_height, patch_width,
         for y in range(0, out_height, patch_height):
             for x in range(0, out_width, patch_width):
                 py, px = select_patch(img, img_out, y, x, patch_height, patch_width,
-                                      overlap_height, overlap_width, err_threshold,
-                                      transfer_info=(img_gray, target_gray, alpha, itr))
+                                      overlap_height, overlap_width, err_threshold, target_img, alpha, itr)
                 dy, dx, _ = img_out[y:y + patch_height, x:x + patch_width].shape
                 img_out[y:y + dy, x:x + dx] = img[py:py + dy, px:px + dx]
                 if y > 0:
