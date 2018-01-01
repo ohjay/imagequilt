@@ -186,7 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--overlap_height', '-ovh', type=int)
     parser.add_argument('--overlap_width',  '-ovw', type=int)
     parser.add_argument('--overlap',        '-ov',  type=int)
-    parser.add_argument('--err_threshold',  '-tol', type=float, default=0.05)
+    parser.add_argument('--err_threshold',  '-tol', type=float, default=0.0)
     parser.add_argument('--alpha_init',     '-a',   type=float, default=0.1)
     parser.add_argument('--n',              '-n',   type=int,   default=8)
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
