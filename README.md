@@ -17,7 +17,7 @@ python main.py --texture <texture_path> --target <target_path> --patch_height <i
 ```
 
 In all of the above commands, any omitted parameters will adhere to the following defaults:
-```python
+```
 out_height     = max(image_height, image_width) * 3
 out_width      = max(image_height, image_width) * 3
 patch_height   = max(1, min(image_height, image_width) // 3)
