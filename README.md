@@ -13,7 +13,7 @@ python main.py --texture <texture_path> --out_height <int> --out_width <int> --p
 ```
 python main.py --texture <texture_path> --target <target_path>
 python main.py --texture <texture_path> --target <target_path> --patchsize <int> --overlap <int>
-python main.py --texture <texture_path> --target <target_path> --patch_height <int> --patch_width <int> --overlap_height <int> --overlap_width <int> --err_threshold <float> --alpha_init <float> --n <int> --outdir <str>
+python main.py --texture <texture_path> --target <target_path> --patch_height <int> --patch_width <int> --overlap_height <int> --overlap_width <int> --err_threshold <float> --alpha_init <float> --n <int> [--high_fidelity] --outdir <str>
 ```
 
 In all of the above commands, any omitted parameters will adhere to the following defaults:
@@ -27,5 +27,6 @@ overlap_width  = max(1, patch_width  // 3)
 err_threshold  = 0.15 if synthesis, 0.05 if transfer
 alpha_init     = 0.1
 n              = 8
+high_fidelity  = False
 outdir         = 'out'
 ```

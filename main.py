@@ -14,7 +14,7 @@ Usage:
     [--out_height <int>] [--out_width <int>] [--outsize <int>]
     [--patch_height <int>] [--patch_width <int>] [--patchsize <int>]
     [--overlap_height <int>] [--overlap_width <int>] [--overlap <int>]
-    [--err_threshold <float>] [--alpha_init <float>] [--n <int>] [--outdir <str>]
+    [--err_threshold <float>] [--alpha_init <float>] [--n <int>] [--high_fidelity] [--outdir <str>]
 
 e.g.
     main.py --texture in/bricks_small.jpg --outsize 576 --patchsize 32 --overlap 16
@@ -289,6 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--err_threshold',  '-tol', type=float)
     parser.add_argument('--alpha_init',     '-a',   type=float, default=0.1)
     parser.add_argument('--n',              '-n',   type=int,   default=8)
+    parser.add_argument('--high_fidelity',  '-hf',  action='store_true')
     parser.add_argument('--outdir',         '-out', type=str,   default='out')
     args = parser.parse_args()
 
@@ -319,6 +320,8 @@ if __name__ == '__main__':
         target_img = sk.img_as_float(target_img).astype(np.float32)
         if not args.err_threshold:
             args.err_threshold = 0.05
+        if args.high_fidelity:
+            HIGH_FIDELITY = True
         target_base = args.target[args.target.rfind('/') + 1:args.target.rfind('.')]
         outpath = os.path.join(args.outdir, texture_base + '_' + target_base + '.jpg')
         transfer(img, target_img, args.patch_height, args.patch_width, args.overlap_height, args.overlap_width,
